@@ -38,6 +38,8 @@ at an offset of 0, basicaly duplicating them.
 xrandr-setup parses the configuration and prompts through a menu all the valid layouts that
 can be selected with the connected displays. If none is valid, it behaves like `--auto`.
 
+All arguments after `-s` or `--select` are passed to the menu application.
+
 ### No input arguments
 xrandr-setup parses the configuration and selects the first layout that matches the connected
 displays. If none is valid, it behaves like `--auto`.
