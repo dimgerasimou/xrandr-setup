@@ -237,6 +237,7 @@ getinputscreen(CfgScreens *cs, char *argv[])
 	size_t pstrs;
 	char *pstr;
 	char buffer[BUF_SIZE];
+	char ret;
 
 	if (cs->sc < 1)
 		return -1;
@@ -270,7 +271,15 @@ getinputscreen(CfgScreens *cs, char *argv[])
 	if (pstr[pstrs - 2] == '\n')
 		 pstr[pstrs - 2] = '\0';
 	
-	return getpromptoption(pstr, argv);
+	ret = getpromptoption(pstr, argv);
+	free(pstr);
+
+	if (ret < 0) {
+		cleanup(cs);
+		exit(0);
+	}
+
+	return ret;
 }
 
 static void
