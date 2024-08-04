@@ -50,15 +50,17 @@ $XDG_CONFIG_HOME/xrandr-setup/xrandr-setup.config
 ```
 
 ### Screen
-Every new layout must start with the `'[screen]'` in an empty line. All screen options must
+Every new layout must start with the `[screen]` in an empty line. All screen options must
 be on a new line. Whitespace is ignored so they can be indented. Comments can be prepented
-with the `'#'` character. The format of options must be `option=value`.
+with the `#` character. The format of options must be `option=value`.
 Strings must be enclosed in `"` characters.
 
 The screen options include:
-- name     The name of the layout, used with `--select` options.
-- dpi      The desired dpi of the screen.
-- monitor  The monitor list. Must have one for each monitor in the layout.
+| Name     | Type   | Description                                                          |
+|:---------|:-------|:---------------------------------------------------------------------|
+| name     | string | The name of the layout, used with `--select` options.                |
+| dpi      | uint   | The desired dpi of the screen.                                       |
+| monitor  | list   | The monitor list. Must have one for each monitor in the layout.      |
 
 ### Monitor
 
@@ -67,14 +69,16 @@ must be comma seperated, however they can also indented in new lines.
 Any option left empty except the `id` is set at its maximum allowed by XRandR.
 
 The monitor options include:
-- id       string - The id of the monitor as seen by XRandR.
-- xoffset  uint   - The horizontal offset of the monitor in the screen.
-- yoffset  uint   - The vertical offset of the monitor in the screen.
-- xmode    uint   - The horizontal resolution of the monitor.
-- ymode    uint   - The verical resolution of the monitor.
-- rate     double - The refresh rate of the monitor.
-- rotation string - The rotation of the monitor (`normal`, `inverted`, `left`, `right`).
-- primary  bool   - Sets the monitor as primary.
+| Name     | Type   | Description                                                          |
+|:---------|:-------|:---------------------------------------------------------------------|
+| id       | string | The id of the monitor as seen by XRandR.                             |
+| xoffset  | uint   | The horizontal offset of the monitor in the screen.                  |
+| yoffset  | uint   | The vertical offset of the monitor in the screen.                    |
+| xmode    | uint   | The horizontal resolution of the monitor.                            |
+| ymode    | uint   | The verical resolution of the monitor.                               |
+| rate     | double | The refresh rate of the monitor.                                     |
+| rotation | string | The rotation of the monitor (`normal`, `inverted`, `left`, `right`). |
+| primary  | bool   | Sets the monitor as primary.                                         |
 
 ### Example
 ```
