@@ -48,14 +48,18 @@ displays. If none is valid, it behaves like `--auto`.
 
 The default configuration path is (can be changed through a constant variable in the `main.c` file):
 ```bash
-$XDG_CONFIG_HOME/xrandr-setup/xrandr-setup.config
+$XDG_CONFIG_HOME/xrandr-setup/xrandr-setup.toml
 ```
 
+Configuration is in toml like format, so the following rules apply:
+- Whitespace is ignored
+- All options and array definitions must be on a new line.
+- Options are defined only once per array.
+- Format of options is `option=value`
+- Comments are prepended with the `#` character.
+- Strings must be enclosed in `"` characters.
+
 ### Screen
-Every new layout must start with the `[screen]` in an empty line. All screen options must
-be on a new line. Whitespace is ignored so they can be indented. Comments can be prepented
-with the `#` character. The format of options must be `option=value`.
-Strings must be enclosed in `"` characters.
 
 The screen options include:
 | Name     | Type   | Description                                                          |
@@ -66,8 +70,6 @@ The screen options include:
 
 ### Monitor
 
-Every new monitor must be enclosed in brackets `'[', ']'`. The options of the monitor list
-must be comma seperated, however they can also indented in new lines.
 Any option left empty except the `id` is set at its maximum allowed by XRandR.
 
 The monitor options include:
@@ -84,25 +86,22 @@ The monitor options include:
 
 ### Example
 ```
-[screen]
-    name="Using external monitor"
-    dpi=96
-    monitor=[
-        id="HDMI-0",
-        primary=true,
-        xoffset=1920,
-    ]
-    monitor=[
-        id="eDP-1",
-    ]
+[[screen]]
+        name="External monitor"
+        #dpi=96
+        [[monitor]]
+                id="HDMI-0"
+                primary=true
+        [[monitor]]
+                id="eDP-1"
+                xoffset=1920
 
-[screen]
-    name="Internal display"
+[[screen]]
+    name="Internal monitor"
     dpi=96
-    monitor=[
-        id="eDP-1",
-        primary=true,
-    ]
+    [[monitor]]
+        id="eDP-1"
+        primary=true
 ```
 
 ## Logging

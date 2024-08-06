@@ -1,2 +1,4 @@
 xrandr-setup
-xrandr-setup.o
+*.o
+compile_commands.json
+.cache

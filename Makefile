@@ -8,16 +8,19 @@ LDFLAGS := -lX11 -lXrandr
 
 all: xrandr-setup
 
-xrandr-setup.o:
+main.o:
 	$(CC) -o $@ main.c -c ${CFLAGS}
 
-xrandr-setup: xrandr-setup.o
-	$(CC) -o $@ xrandr-setup.o ${LDFLAGS}
+toml.o:
+	$(CC) -o $@ toml.c -c ${CFLAGS}
+
+xrandr-setup: main.o toml.o
+	$(CC) -o $@ main.o toml.o ${LDFLAGS}
 
 clean:
 	@echo "cleaning xrandr-setup"
 	rm -f xrandr-setup
-	rm -f xrandr-setup.o
+	rm -f *.o
 
 install: xrandr-setup
 	@echo "installing xrandr-setup"

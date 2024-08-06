@@ -13,7 +13,6 @@
  */
 
 #define _POSIX_C_SOURCE 200809L
-#include <ctype.h>
 #include <errno.h>
 #include <libgen.h>
 #include <limits.h>
@@ -26,12 +25,14 @@
 #include <X11/extensions/Xrandr.h>
 #include <X11/Xlib.h>
 
+#include "toml.h"
+
 /* constants definition */
 #define LOG_SIZE 256
 #define BUF_SIZE 512
 
 /* paths definitions */
-const char *cfgpath[] = { "$XDG_CONFIG_HOME", "xrandr-setup", "xrandr-setup.conf", NULL};
+const char *cfgpath[] = { "$XDG_CONFIG_HOME", "xrandr-setup", "xrandr-setup.toml", NULL};
 const char *logpath[] = {"$HOME", "window-manager.log", NULL};
 const char *pmtpath[] = { "usr", "local", "bin", "dmenu", NULL};
 
@@ -68,20 +69,16 @@ static void freemonitor(CfgMonitor *m);
 static void freescreen(CfgScreen *s);
 static void freescreens(CfgScreens *cs);
 static CfgScreens* getcfgscreens(void);
-static char* getcfgstring(const char *val);
 static FILE* getcfgstream(void);
 static int getinputscreen(CfgScreens *cs, char *argv[]);
-static void getmonitorconfig(CfgScreen *s, const char *strin, FILE *fp);
-static char* getmonitorstring(const char *strin, FILE *fp);
 static char* getpath(const char **arr);
 static int getpromptoption(const char *menu, char *argv[]);
 static void logstring(const char *string);
 static void matchscreens(CfgScreens *cs);
 static void newmonitor(CfgScreen *s);
 static void newscreen(CfgScreens *ss);
-static void parsemonitor(CfgScreen *s, const char *mstring);
-static void parsemonitorvalue(CfgScreen *s, const char *key, const char *val);
-static void parsescreens(CfgScreens *cs, char *buffer, FILE *fp);
+static void setupmonitor(CfgMonitor *m, XRROutputInfo *output);
+static void parsescreen(CfgScreens *cs, TomlArray *screen);
 static void printhelp(void);
 static void removescreen(CfgScreens *cs, const int index);
 static void setscreen(CfgScreen *s);
@@ -90,7 +87,6 @@ static void setupemptyscreen(CfgScreen **s);
 static void setupmonitor(CfgMonitor *m, XRROutputInfo *output);
 static void setupscreen(CfgScreen *s);
 static void setupscreensize(CfgScreen *s, const unsigned int retract);
-static char* trimwhitespace(char *string);
 
 /* variable definitions */
 static Display *dpy = NULL;
@@ -168,41 +164,35 @@ getcfgscreens(void)
 {
 	FILE *fp;
 	CfgScreens *cs;
-	char buffer[BUF_SIZE];
-
+	TomlArray *config = NULL;
+	TomlArrayKey *screens = NULL;
 
 	if (!(fp = getcfgstream()))
 		return NULL;
 	
-	if (!(cs = malloc(sizeof(CfgScreens)))) {
-		fclose(fp);
-		dielog("malloc()");
+	config = tomlgetconfig(fp);
+	fclose(fp);
+
+	if (!config) {
+		return NULL;
 	}
+
+	if (!(cs = malloc(sizeof(CfgScreens))))
+		dielog("malloc()");
 
 	cs->sc = 0;
 	cs->s = NULL;
 
-	while (fgets(buffer, sizeof(buffer), fp)) {
-		parsescreens(cs, buffer, fp);
+	if (!(screens = tomlgetarraykey(config, "screen"))) {
+		tomldeletearray(config);
+		return cs;
 	}
 
-	fclose(fp);
+	for (size_t i = 0; i < screens->narr; i++)
+		parsescreen(cs, screens->arr[i]);
+
+	tomldeletearray(config);
 	return cs;
-}
-
-static char*
-getcfgstring(const char *val)
-{
-	char *ptr;
-
-	if (*(ptr = (char*) val + strlen(val) - 1) != '"')
-		return NULL;
-	*ptr = '\0';
-
-	if (*(ptr = (char*) val) != '"')
-		return NULL;
-
-	return strdup(++ptr);
 }
 
 static FILE*
@@ -279,86 +269,6 @@ getinputscreen(CfgScreens *cs, char *argv[])
 		exit(0);
 	}
 
-	return ret;
-}
-
-static void
-getmonitorconfig(CfgScreen *s, const char *strin, FILE *fp)
-{
-	char *mstring;
-
-	if (!(mstring = getmonitorstring(strin, fp))) {
-		return;
-	}
-
-	newmonitor(s);
-	parsemonitor(s, mstring);
-}
-
-static char*
-getmonitorstring(const char *strin, FILE *fp)
-{
-	size_t str_size;
-	size_t ind;
-	char *str;
-	char *ret;
-	int buf;
-	int instr;
-
-	str_size = (strlen(strin) >= 16) ? strlen(strin) + 2 : 16;
-	if (!(str = malloc(str_size * sizeof(char))))
-		dielog("malloc()");
-
-	strncpy(str, strin, str_size - 1);
-	str[str_size - 1] = '\0';
-
-	instr = 0;
-	ind   = 0;
-
-	while (!(str[ind] == ']' && !instr)) {
-		if (ind >= str_size - 1) {
-			str_size *= 2;
-			if (!(str = realloc(str, str_size * sizeof(char))))
-				dielog("realloc()");
-		}
-
-		switch (str[ind]) {
-		case '\n':              /* fallthrough */
-		case '\t':
-			str[ind] = ' ';
-			ind++;
-			break;
-
-		case '\0':
-			buf = fgetc(fp);
-			if (buf == EOF) {
-				if (ferror(fp)) {
-					free(str);
-					dielog("fgetc()");
-				}
-				logstring("WARN - configuration fgetc() - EOF");
-				free(str);
-				return NULL;
-			}
-			str[ind] = (char) buf;
-			str[ind + 1] = '\0';
-			break;
-
-		case '"':
-			ind++;
-			instr = !instr;
-			break;
-
-		default:
-			ind++;
-			break;
-		}
-	}
-
-	str[ind] = '\0';
-	ret = strdup(str + 1);
-
-	free(str);
 	return ret;
 }
 
@@ -610,100 +520,64 @@ newscreen(CfgScreens *ss)
 }
 
 static void
-parsemonitorvalue(CfgScreen *s, const char *key, const char *val)
+parsemonitor(CfgScreen *s, TomlArray *monitor)
 {
-	if (!strcmp(key, "id"))
-		s->m[s->mc - 1]->id = getcfgstring(val);
-	if (!strcmp(key, "primary"))
-		s->m[s->mc - 1]->primary = (!strcmp(val, "true") || !strcmp(val, "True")) ? 1 : 0;
-	if (!strcmp(key, "xoffset")) 
-		sscanf(val, "%ud", &(s->m[s->mc - 1]->xoffset));
-	if (!strcmp(key, "yoffset"))
-		sscanf(val, "%ud", &(s->m[s->mc - 1]->yoffset));
-	if (!strcmp(key, "xmode")) 
-		sscanf(val, "%ud", &(s->m[s->mc - 1]->xmode));
-	if (!strcmp(key, "ymode"))
-		sscanf(val, "%ud", &(s->m[s->mc - 1]->ymode));
-	if (!strcmp(key, "rate")) 
-		sscanf(val, "%lf", &(s->m[s->mc - 1]->rate));
-	if (!strcmp(key, "rotation")) {
-		if (!strcmp(val, "normal"))
+	char *id;
+	unsigned int primary;
+	unsigned int xoffset;
+	unsigned int yoffset;
+	unsigned int xmode;
+	unsigned int ymode;
+	double rate;
+	char *rotation;
+
+	newmonitor(s);
+
+	if (!tomlgetstring(monitor, "id", &id))
+		s->m[s->mc - 1]->id = strdup(id);
+	if (!tomlgetbool(monitor, "primary", &primary))
+		s->m[s->mc - 1]->primary = primary;
+	if (!tomlgetuint(monitor, "xoffset", &xoffset))
+		s->m[s->mc - 1]->xoffset = xoffset;
+	if (!tomlgetuint(monitor, "yoffset", &yoffset))
+		s->m[s->mc - 1]->yoffset = yoffset;
+	if (!tomlgetuint(monitor, "xmode", &xmode))
+		s->m[s->mc - 1]->xmode = xmode;
+	if (!tomlgetuint(monitor, "ymode", &ymode))
+		s->m[s->mc - 1]->ymode = ymode;
+	if (!tomlgetdouble(monitor, "rate", &rate))
+		s->m[s->mc - 1]->rate = rate;
+	if (!tomlgetstring(monitor, "rotation", &rotation)) {
+		if (!strcmp(rotation, "normal"))
 			s->m[s->mc - 1]->rotation = RR_Rotate_0;
-		else if (!strcmp(val, "inverted"))
+		else if (!strcmp(rotation, "inverted"))
 			s->m[s->mc - 1]->rotation = RR_Rotate_180;
-		else if (!strcmp(val, "left"))
+		else if (!strcmp(rotation, "left"))
 			s->m[s->mc - 1]->rotation = RR_Rotate_270;
-		else if (!strcmp(val, "right"))
-			s->m[s->mc - 1]->rotation = RR_Rotate_90; 
+		else if (!strcmp(rotation, "right"))
+			s->m[s->mc - 1]->rotation = RR_Rotate_90;
 	}
 }
 
 static void
-parsemonitor(CfgScreen *s, const char *mstring)
+parsescreen(CfgScreens *cs, TomlArray *screen)
 {
-	char mstr[2048];
-	char str[1024];
-	char key[512];
-	char val[512];
-	char *tok;
-	char *ptr;
+	TomlArrayKey *monitors = NULL;
+	char *name;
+	unsigned int dpi;
 
-	strcpy(mstr, mstring);
-	tok = strtok(mstr, ",");
-	while (tok) {
-		ptr = trimwhitespace(tok);
-		strcpy(str, ptr);
+	newscreen(cs);
 
-		if (str[0] == '#') {
-			tok = strtok(NULL, ",");
-			continue;
-		}
+	if (!tomlgetstring(screen, "name", &name))
+		cs->s[cs->sc - 1]->name = strdup(name);
+	if (!tomlgetuint(screen, "dpi", &dpi))
+		cs->s[cs->sc - 1]->dpi = dpi;
 
-		if (!(ptr = strchr(str, '='))) {
-			tok = strtok(NULL, ",");
-			continue;
-		}
-
-		strncpy(key, str, (ptr - str));
-		key[ptr - str] = '\0';
-		strcpy(val, (ptr + 1));
-		parsemonitorvalue(s, key, val);
-		tok = strtok(NULL, ",");
-	}
-}
-
-static void
-parsescreens(CfgScreens *cs, char *buffer, FILE *fp)
-{
-	char *input;
-	char *ptr;
-	char key[512];
-	char val[512];
-	
-	input = trimwhitespace(buffer);
-	input[strcspn(input, "\n")] = '\0';
-
-	if (input[0] == '#')
+	if (!(monitors = tomlgetarraykey(screen, "monitor")))
 		return;
 
-	if (!strcmp(input, "[screen]")) {
-		newscreen(cs);
-		return;
-	}
-
-	if (!(ptr = strchr(input, '=')))
-		return;
-
-	strncpy(key, input, (ptr - input));
-	key[ptr - input] = '\0';
-	strcpy(val, (ptr + 1));
-
-	if (!strcmp(key, "name"))
-		cs->s[cs->sc - 1]->name = getcfgstring(val);
-	if (!strcmp(key, "dpi"))
-		sscanf(val, "%ud", &(cs->s[cs->sc - 1]->dpi));
-	if (!strcmp(key, "monitor"))
-		getmonitorconfig(cs->s[cs->sc - 1], val, fp);
+	for (size_t i = 0; i < monitors->narr; i++)
+		parsemonitor(cs->s[cs->sc - 1], monitors->arr[i]);
 }
 
 static void
@@ -799,7 +673,6 @@ setupemptyscreen(CfgScreen **s)
 	}
 }
 
-/* fills all missing data of the monitor */
 static void
 setupmonitor(CfgMonitor *m, XRROutputInfo *output)
 {
@@ -937,19 +810,6 @@ setupscreensize(CfgScreen *s, unsigned int retract)
 		}
 	}
 	XRRSetScreenSize(dpy, root, width, height, mmWidth, mmHeight);
-}
-
-static char*
-trimwhitespace(char *string)
-{
-	char *end;
-
-	end = string + strlen(string) - 1;
-	while (end > string && isspace((unsigned char)*end)) end--;
-	end[1] = '\0';
-	while (*string && isspace((unsigned char)*string)) string++;
-
-	return string;
 }
 
 int
