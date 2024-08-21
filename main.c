@@ -438,20 +438,24 @@ matchscreens(CfgScreens *cs)
 	XRROutputInfo *output;
 	size_t mc;
 	char **id;
+	char **temp;
 	unsigned int match;
 
 	if (!cs)
 		return;
 
-	id = NULL;
+	if (!(id = malloc(sizeof(char*))))
+		dielog("malloc()");
 	mc = 0;
 
 	for (int i = 0; i < resources->noutput; i++) {
 		output = XRRGetOutputInfo(dpy, resources, resources->outputs[i]);
 		if (!output->connection) {
 			mc++;
-			id = realloc(id, mc * sizeof(char*));
-			id[i] = strdup(output->name);
+			if (!(temp = realloc(id, mc * sizeof(char*))))
+				dielog("realloc()");
+			temp[mc-1] = strdup(output->name);
+			id = temp;
 		}
 		XRRFreeOutputInfo(output);
 	}
@@ -820,7 +824,6 @@ main(int argc, char *argv[])
 	int selscreen = 0;
 
 	setup();
-
 	cs = getcfgscreens();
 	matchscreens(cs);
 
