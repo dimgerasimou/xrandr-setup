@@ -33,7 +33,7 @@
 
 /* paths definitions */
 const char *cfgpath[] = { "$XDG_CONFIG_HOME", "xrandr-setup", "xrandr-setup.toml", NULL};
-const char *logpath[] = {"$HOME", "window-manager.log", NULL};
+const char *logpath[] = { "$HOME", "window-manager.log", NULL};
 const char *pmtpath[] = { "usr", "local", "bin", "dmenu", NULL};
 
 /* structure definitions */
@@ -52,6 +52,7 @@ typedef struct {
 
 typedef struct {
 	unsigned int dpi;
+	unsigned int lowp;
 	char *name;
 	size_t mc;
 	CfgMonitor **m;
@@ -92,6 +93,7 @@ static void setupscreensize(CfgScreen *s, const unsigned int retract);
 static Display *dpy = NULL;
 static XRRScreenResources *resources = NULL;
 static Window root;
+static unsigned int lowperf;
 
 static void
 cleanup(CfgScreens *cs)
@@ -460,7 +462,7 @@ matchscreens(CfgScreens *cs)
 		XRRFreeOutputInfo(output);
 	}
 
-	for (size_t i = cs->sc - 1; i < cs->sc; i--) {
+	for (size_t i = cs->sc - 1; i > 0; i--) {
 		if (cs->s[i]->mc != mc) {
 			removescreen(cs, i);
 			continue;
@@ -518,6 +520,7 @@ newscreen(CfgScreens *ss)
 
 	ss->s[ss->sc - 1] = s;
 	s->dpi = 0;
+	s->lowp = 0;
 	s->mc = 0;
 	s->m = NULL;
 	s->name = NULL;
@@ -569,6 +572,7 @@ parsescreen(CfgScreens *cs, TomlArray *screen)
 	TomlArrayKey *monitors = NULL;
 	char *name;
 	unsigned int dpi;
+	unsigned int lowp;
 
 	newscreen(cs);
 
@@ -576,6 +580,8 @@ parsescreen(CfgScreens *cs, TomlArray *screen)
 		cs->s[cs->sc - 1]->name = strdup(name);
 	if (!tomlgetuint(screen, "dpi", &dpi))
 		cs->s[cs->sc - 1]->dpi = dpi;
+	if (!tomlgetbool(screen, "low-performance", &lowp))
+		cs->s[cs->sc - 1]->lowp = lowp;
 
 	if (!(monitors = tomlgetarraykey(screen, "monitor")))
 		return;
@@ -584,14 +590,18 @@ parsescreen(CfgScreens *cs, TomlArray *screen)
 		parsemonitor(cs->s[cs->sc - 1], monitors->arr[i]);
 }
 
-static void
-printhelp(void)
+static void printhelp(void)
 {
-	printf("xrandr-setup\nThis is an application for setting xRandR using premade configuration files for your screens\n");
-	printf("\nUsage:\n");
-	printf("\t'-h' or '--help'      prints this menu\n");
-	printf("\t'-a' or '--auto'      sets up with a basic screen ignoring the config files\n");
-	printf("\t'-s' or '--select'    prompts through the selected applications for a layout (the prompt args are passed through argv)\n");
+    printf("xrandr-setup - Configure screen layouts using xRandR with predefined configs\n\n");
+
+    printf("Usage:\n");
+    printf("  xrandr-setup [OPTION]...\n\n");
+
+    printf("Options:\n");
+    printf("  -h, --help             Display this help and exit\n");
+    printf("  -a, --auto             Set up a basic screen layout ignoring config files\n");
+    printf("  -s, --select [ARGS]    Prompt for layout selection (passes additional arguments)\n");
+    printf("  -l, --low-performance  Enable low performance mode (60 Hz rate cap)\n\n");
 }
 
 static void
@@ -649,6 +659,7 @@ setup(void)
 
 	root = XDefaultRootWindow(dpy);
 	resources = XRRGetScreenResources(dpy, root);
+	lowperf = 0;
 }
 
 static void
@@ -719,8 +730,9 @@ setupmonitor(CfgMonitor *m, XRROutputInfo *output)
 					if ((mode->width != m->xmode) || (mode->height!= m->ymode))
 						continue;
 					rate = (double) mode->dotClock / (double) (mode->hTotal * mode->vTotal);
-					if (rate > m->rate)
+					if (rate > m->rate && (rate <= 60.0 || !lowperf))
 						m->rate = rate;
+					
 				}
 			}
 		}
@@ -821,7 +833,8 @@ main(int argc, char *argv[])
 {
 	CfgScreens *cs;
 	CfgScreen *s;
-	int selscreen = 0;
+	unsigned int selscreen = 0;
+	unsigned int autoselect = 0;
 
 	setup();
 	cs = getcfgscreens();
@@ -829,23 +842,24 @@ main(int argc, char *argv[])
 
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--auto") || !strcmp(argv[i], "-a")) {
-			selscreen = -1;
-			break;
+			autoselect = 1;
 		} else if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) {
 			printhelp();
-			cleanup(cs);
 			return 0;
 		} else if (!strcmp(argv[i], "--select") || !strcmp(argv[i], "-s")) {
 			selscreen = getinputscreen(cs, &argv[i+1]);
-			break;
+		} else if (!strcmp(argv[i], "--low-performance") || !strcmp(argv[i], "-l")) {
+			lowperf = 1;
+			matchscreens(cs);
 		} else {
-			fprintf(stderr, "xrandr-setup - invalid arguments. Execute with --help for usage\n");
-			cleanup(cs);
+			fprintf(stderr, "Usage: %s [-ahls]\n", argv[0]);
 			return 1;
 		}
 	}
 
-	if (cs && selscreen >=0 && cs->sc > 0) {
+	
+
+	if (cs && !autoselect && cs->sc > 0) {
 		s = cs->s[selscreen];
 	} else {
 		if (cs) {
