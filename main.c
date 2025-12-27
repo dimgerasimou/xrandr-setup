@@ -462,7 +462,7 @@ matchscreens(CfgScreens *cs)
 		XRRFreeOutputInfo(output);
 	}
 
-	for (size_t i = cs->sc - 1; i > 0; i--) {
+	for (int i = cs->sc - 1; i >= 0; i--) {
 		if (cs->s[i]->mc != mc) {
 			removescreen(cs, i);
 			continue;
